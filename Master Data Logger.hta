@@ -1,0 +1,263 @@
+<html>
+<head>
+<title>Master Data Logging</title>
+<HTA:APPLICATION 
+    ID="RFIDLogger"
+    APPLICATIONNAME="MasterDataLogger"
+    SCROLL="no"
+    SINGLEINSTANCE="yes"
+    WINDOWSTATE="normal"
+    BORDER="thin"
+    SHOWINTASKBAR="yes"
+    CAPTION="yes"
+>
+<style>
+    body {
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        background-color: #f0f8ff;
+        margin: 0;
+        padding: 20px;
+        color: #333;
+        box-sizing: border-box;
+    }
+
+    h2 {
+        text-align: center;
+        font-size: 24px;
+        color: #0078D4;
+        margin-bottom: 10px;
+    }
+
+    #projectTitle {
+        text-align: center;
+        font-size: 18px;
+        color: #0078D4;
+        margin-bottom: 20px;
+    }
+
+    #inputField {
+        width: 100%;
+        max-width: 600px;
+        padding: 12px;
+        font-size: 16px;
+        border: 1px solid #0078D4;
+        border-radius: 8px;
+        margin-bottom: 20px;
+        background-color: #ffffff;
+        margin-left: auto;
+        margin-right: auto;
+    }
+
+    #inputField:focus {
+        outline: none;
+        border-color: #005a8b;
+    }
+
+    #logDisplay {
+        width: 100%;
+        max-width: 600px;
+        height: 250px;
+        border: 1px solid #0078D4;
+        border-radius: 8px;
+        padding: 10px;
+        background-color: #ffffff;
+        overflow-y: auto;
+        margin-left: auto;
+        margin-right: auto;
+        font-family: 'Courier New', Courier, monospace;
+    }
+
+    #status {
+        font-size: 16px;
+        text-align: center;
+        margin-bottom: 20px;
+    }
+
+    .button-container {
+        text-align: center;
+        margin-top: 20px;
+    }
+
+    button {
+        background-color: #0078D4;
+        color: white;
+        border: none;
+        border-radius: 8px;
+        padding: 12px 20px;
+        font-size: 16px;
+        width: 150px;
+        cursor: pointer;
+        margin: 10px;
+        transition: background-color 0.3s;
+    }
+
+    button:hover {
+        background-color: #005a8b;
+    }
+
+    button:focus {
+        outline: none;
+    }
+
+    #footer {
+        font-size: 14px;
+        text-align: center;
+        margin-top: 20px;
+        color: #888888;
+    }
+
+</style>
+</head>
+
+<script language="VBScript">
+    Dim uidDict, excelApp, workbook, worksheet, rowCount, fso
+    
+    Sub Window_OnLoad
+        Set uidDict = CreateObject("Scripting.Dictionary")
+        Set fso = CreateObject("Scripting.FileSystemObject")
+        Set excelApp = CreateObject("Excel.Application")
+        excelApp.Visible = False
+        Set workbook = excelApp.Workbooks.Add
+        Set worksheet = workbook.Worksheets(1)
+        
+        worksheet.Cells(1, 1) = "Serial No"
+        worksheet.Cells(1, 2) = "EPC UID"
+        worksheet.Cells(1, 3) = "Timestamp"
+        
+        worksheet.Columns(2).NumberFormat = "0"
+        
+        rowCount = 2
+        document.getElementById("inputField").focus
+        
+        AdjustWindowSize
+    End Sub
+
+    Sub AdjustWindowSize
+        Dim windowHeight, windowWidth
+        windowHeight = document.body.scrollHeight
+        windowWidth = 640 
+        
+        window.resizeTo windowWidth, windowHeight + 80
+    End Sub
+
+    Sub LogUID
+        Dim uid, timestamp, logLine
+        uid = Trim(document.getElementById("inputField").value)
+        
+        If Len(uid) > 0 Then
+            If Not uidDict.Exists(uid) Then
+                uidDict.Add uid, rowCount - 1
+                ' Updated to use 24-hour time format
+                timestamp = FormatDateTime(Now, vbShortDate) & " " & Right("00" & Hour(Now), 2) & ":" & Right("00" & Minute(Now), 2) & ":" & Right("00" & Second(Now), 2)
+                
+                logLine = rowCount - 1 & vbTab & uid & vbTab & timestamp
+                
+                document.getElementById("logDisplay").innerHTML = logLine & "<br>" & document.getElementById("logDisplay").innerHTML
+                
+                worksheet.Cells(rowCount, 1) = rowCount - 1
+                worksheet.Cells(rowCount, 2).Value = uid
+                worksheet.Cells(rowCount, 3) = timestamp
+                
+                rowCount = rowCount + 1
+                document.getElementById("status").innerHTML = "Logged new UID. Total unique UIDs: " & uidDict.Count
+            End If
+            document.getElementById("inputField").value = ""
+        End If
+    End Sub
+
+    Function BrowseFolder
+        Dim shell, folder
+        Set shell = CreateObject("Shell.Application")
+        Set folder = shell.BrowseForFolder(0, "Select folder to save Excel file", 0)
+        
+        If Not folder Is Nothing Then
+            BrowseFolder = folder.Self.Path
+        Else
+            BrowseFolder = ""
+        End If
+        
+        Set folder = Nothing
+        Set shell = Nothing
+    End Function
+
+    Sub SaveFile
+        On Error Resume Next
+        
+        Dim folderPath, filePath, errNumber, errDesc
+        folderPath = BrowseFolder
+
+        If folderPath <> "" Then
+            If Right(folderPath, 1) <> "\" Then
+                folderPath = folderPath & "\"
+            End If
+
+            filePath = folderPath & "RFID_Log_" & Replace(Replace(Now, ":", "-"), "/", "-") & ".xlsx"
+
+            excelApp.DisplayAlerts = False
+            excelApp.ScreenUpdating = False
+            Err.Clear
+            workbook.SaveAs filePath, 51
+            workbook.Saved = True
+
+            errNumber = Err.Number
+            errDesc = Err.Description
+
+            On Error GoTo 0
+
+            If fso.FileExists(filePath) Then
+                document.getElementById("status").innerHTML = "File saved successfully to: " & filePath
+            Else
+                document.getElementById("status").innerHTML = "Error saving file: " & errDesc
+            End If
+        Else
+            document.getElementById("status").innerHTML = "Save cancelled by user"
+        End If
+    End Sub
+
+    Sub ExitApp
+        On Error Resume Next
+        workbook.Close False
+        excelApp.Quit
+        Set worksheet = Nothing
+        Set workbook = Nothing
+        Set excelApp = Nothing
+        Set uidDict = Nothing
+        Set fso = Nothing
+        window.close
+        On Error GoTo 0
+    End Sub
+
+    Sub ClearList
+        uidDict.RemoveAll
+        rowCount = 2
+        document.getElementById("logDisplay").innerHTML = ""
+        If rowCount > 2 Then
+            worksheet.Range("A2:C" & rowCount - 1).Clear
+        End If
+        document.getElementById("status").innerHTML = "List cleared. Ready for new acquisitions."
+        document.getElementById("inputField").focus
+    End Sub
+
+    Sub CheckEnterKey
+        If window.event.keyCode = 13 Then
+            LogUID
+        End If
+    End Sub
+</script>
+
+<body>
+    <h2>Master Data Logging</h2>
+    <div id="projectTitle">Project: Pack'n'Scan</div>
+    <input type="text" id="inputField" onkeypress="CheckEnterKey" autofocus placeholder="Scan or Enter UID">
+    <div id="logDisplay"></div>
+    <div id="status">Ready to scan...</div>
+    
+    <div class="button-container">
+        <button onclick="SaveFile">Save</button>
+        <button onclick="ClearList">Clear List</button>
+        <button onclick="ExitApp">Exit</button>
+    </div>
+
+    <div id="footer">&copy; INTERLOOP LIMITED</div>
+</body>
+</html>
